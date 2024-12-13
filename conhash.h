@@ -41,4 +41,6 @@ void add_node(HashRing *ring, const char *address);
  */
 const char *get_node(HashRing *ring, const char *key);
 
+void remove_node(HashRing *ring, const char *address);
+
 #endif // HASH_RING_H

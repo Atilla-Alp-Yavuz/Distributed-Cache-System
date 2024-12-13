@@ -7,6 +7,31 @@
 
 #define BUFFER_SIZE 1024
 
+// Announce this server to the load balancer
+void announce_to_load_balancer(const char *server_address) {
+    int sock;
+    struct sockaddr_in lb_addr;
+
+    // Create a socket for UDP
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Failed to create socket for announcement");
+        return;
+    }
+
+    lb_addr.sin_family = AF_INET;
+    lb_addr.sin_port = htons(9091); // Load balancer announcement port
+    inet_pton(AF_INET, "127.0.0.1", &lb_addr.sin_addr); // Assuming load balancer is on localhost
+
+    // Send the server address to the load balancer
+    sendto(sock, server_address, strlen(server_address), 0,
+           (struct sockaddr *)&lb_addr, sizeof(lb_addr));
+
+    printf("Announced server '%s' to the load balancer\n", server_address);
+
+    close(sock);
+}
+
 void handle_client(int client_socket, Cache *cache) {
     char buffer[BUFFER_SIZE];
     while (1) {
@@ -71,6 +96,11 @@ int main(int argc, char *argv[]) {
         perror("Bind failed");
         return EXIT_FAILURE;
     }
+
+    // Announce this server to the load balancer
+    char server_address[256];
+    snprintf(server_address, sizeof(server_address), "127.0.0.1:%d", port);
+    announce_to_load_balancer(server_address);
 
     // Listen for connections
     if (listen(server_socket, 10) < 0) {

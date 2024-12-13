@@ -84,3 +84,28 @@ const char *get_node(HashRing *ring, const char *key) {
     // Wrap around to the first node if no match is found
     return ring->nodes[0].address;
 }
+
+// Remove a node from the hash ring
+void remove_node(HashRing *ring, const char *address) {
+    int found = 0;
+
+    // Find the node by address
+    for (int i = 0; i < ring->node_count; i++) {
+        if (strcmp(ring->nodes[i].address, address) == 0) {
+            found = 1;
+
+            // Shift all subsequent nodes left
+            for (int j = i; j < ring->node_count - 1; j++) {
+                ring->nodes[j] = ring->nodes[j + 1];
+            }
+
+            ring->node_count--;
+            printf("Node '%s' removed from the hash ring\n", address);
+            break;
+        }
+    }
+
+    if (!found) {
+        fprintf(stderr, "Node '%s' not found in the hash ring\n", address);
+    }
+}

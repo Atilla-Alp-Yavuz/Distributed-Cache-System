@@ -3,18 +3,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include "conhash.h"
 
 #define BUFFER_SIZE 1024
-#define SERVER_CONFIG "servers.txt" // Configuration file with server addresses
+#define LOAD_BALANCER_ADDRESS "127.0.0.1" // Address of the load balancer
+#define LOAD_BALANCER_PORT 9090           // Port of the load balancer
 
-void send_to_server(const char *server_address, const char *command) {
-    char ip[256];
-    int port;
-    sscanf(server_address, "%[^:]:%d", ip, &port);
-
+void send_to_load_balancer(const char *command) {
     int sock;
-    struct sockaddr_in server_addr;
+    struct sockaddr_in lb_addr;
     char buffer[BUFFER_SIZE] = {0};
 
     // Create socket
@@ -23,19 +19,19 @@ void send_to_server(const char *server_address, const char *command) {
         return;
     }
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
+    lb_addr.sin_family = AF_INET;
+    lb_addr.sin_port = htons(LOAD_BALANCER_PORT);
 
     // Convert address from text to binary form
-    if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, LOAD_BALANCER_ADDRESS, &lb_addr.sin_addr) <= 0) {
         perror("Invalid address/Address not supported");
         close(sock);
         return;
     }
 
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connection failed");
+    // Connect to the load balancer
+    if (connect(sock, (struct sockaddr *)&lb_addr, sizeof(lb_addr)) < 0) {
+        perror("Connection to load balancer failed");
         close(sock);
         return;
     }
@@ -47,34 +43,13 @@ void send_to_server(const char *server_address, const char *command) {
     int bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received > 0) {
         buffer[bytes_received] = '\0';
-        printf("Server response: %s\n", buffer);
+        printf("Load Balancer Response: %s\n", buffer);
     }
 
     close(sock);
 }
 
-void load_servers(HashRing *ring) {
-    FILE *file = fopen(SERVER_CONFIG, "r");
-    if (!file) {
-        perror("Failed to open server configuration file");
-        exit(EXIT_FAILURE);
-    }
-
-    char line[256];
-    while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\n")] = '\0'; // Remove newline
-        add_node(ring, line);
-    }
-
-    fclose(file);
-}
-
 int main() {
-    HashRing ring = {0};
-
-    // Load servers from configuration file
-    load_servers(&ring);
-
     char command[BUFFER_SIZE];
 
     while (1) {
@@ -86,22 +61,10 @@ int main() {
             break;
         }
 
-        // Parse the key from the command
-        char key[256];
-        if (sscanf(command, "%*s %s", key) != 1) {
-            printf("Invalid command. A key is required.\n");
-            continue;
-        }
-
-        // Get the appropriate server for the key
-        const char *server_address = get_node(&ring, key);
-        if (server_address) {
-            printf("Key '%s' is mapped to node '%s'\n", key, server_address);
-            send_to_server(server_address, command);
-        } else {
-            printf("No server found for the key\n");
-        }
+        // Send command to the load balancer
+        send_to_load_balancer(command);
     }
 
     return 0;
 }
+
