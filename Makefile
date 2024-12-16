@@ -5,7 +5,7 @@ LDFLAGS = -lpthread
 SSLFLAGS = -lssl -lcrypto
 
 # Source files
-SERVER_SRC = server.c cache.c
+SERVER_SRC = server.c cache.c mockdb.c
 CLIENT_SRC = client.c
 LOAD_BALANCER_SRC = load_balancer.c conhash.c
 
@@ -17,11 +17,14 @@ LOAD_BALANCER_BIN = load_balancer
 # Configuration file to store server ports
 SERVER_CONFIG = servers.txt
 
+# Header files (for dependency tracking)
+HEADERS = cache.h mockdb.h
+
 # Default target: Build all components
 all: $(SERVER_BIN) $(CLIENT_BIN) $(LOAD_BALANCER_BIN)
 
 # Build the server
-$(SERVER_BIN): $(SERVER_SRC)
+$(SERVER_BIN): $(SERVER_SRC) $(HEADERS)
 	$(CC) $(CFLAGS) $(SERVER_SRC) -o $(SERVER_BIN) $(LDFLAGS)
 
 # Build the client
