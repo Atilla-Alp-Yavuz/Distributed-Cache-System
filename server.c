@@ -7,6 +7,8 @@
 #include "mockdb.h"
 
 #define BUFFER_SIZE 1024
+#define DB_SERVER_ADDRESS "127.0.0.1"
+#define DB_SERVER_PORT 9092
 
 void announce_to_load_balancer(const char *server_address) {
     int sock;
@@ -27,7 +29,39 @@ void announce_to_load_balancer(const char *server_address) {
     close(sock);
 }
 
-void handle_client(int client_socket, Cache *cache, MockDB *db) {
+char *db_request(const char *command, const char *key, const char *value) {
+    int sock;
+    struct sockaddr_in db_addr;
+    static char response[BUFFER_SIZE];
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Failed to create socket to DB");
+        return NULL;
+    }
+
+    db_addr.sin_family = AF_INET;
+    db_addr.sin_port = htons(DB_SERVER_PORT);
+    inet_pton(AF_INET, DB_SERVER_ADDRESS, &db_addr.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&db_addr, sizeof(db_addr)) < 0) {
+        perror("Connection to DB server failed");
+        close(sock);
+        return NULL;
+    }
+
+    char request[BUFFER_SIZE];
+    snprintf(request, BUFFER_SIZE, "%s %s %s", command, key, value ? value : "");
+    send(sock, request, strlen(request), 0);
+
+    int bytes_received = recv(sock, response, BUFFER_SIZE - 1, 0);
+    response[bytes_received] = '\0';
+
+    close(sock);
+    return response;
+}
+
+void handle_client(int client_socket, Cache *cache) {
     char buffer[BUFFER_SIZE];
 
     while (1) {
@@ -36,14 +70,13 @@ void handle_client(int client_socket, Cache *cache, MockDB *db) {
         if (bytes_received <= 0) break;
 
         char command[10], key[MAX_KEY_LENGTH], value[MAX_VALUE_LENGTH];
-        int ttl;
-        sscanf(buffer, "%s %s %s %d", command, key, value, &ttl);
+        sscanf(buffer, "%s %s %s", command, key, value);
 
         char response[BUFFER_SIZE] = {0};
 
         if (strcmp(command, "set") == 0) {
-            cache_set(cache, key, value, ttl);
-            db_set(db, key, value);
+            cache_set(cache, key, value, 60);
+            db_request("set", key, value);
             snprintf(response, BUFFER_SIZE, "OK");
         } else if (strcmp(command, "get") == 0) {
             char *result = cache_get(cache, key);
@@ -52,9 +85,9 @@ void handle_client(int client_socket, Cache *cache, MockDB *db) {
                 snprintf(response, BUFFER_SIZE, "%s", result);
             } else {
                 printf("Cache Miss: %s\n", key);
-                result = db_get(db, key);
-                if (result) {
-                    cache_set(cache, key, result, 60); // Cache the value for 60 seconds
+                result = db_request("get", key, NULL);
+                if (strcmp(result, "null") != 0) {
+                    cache_set(cache, key, result, 60);
                     snprintf(response, BUFFER_SIZE, "%s", result);
                 } else {
                     snprintf(response, BUFFER_SIZE, "null");
@@ -62,7 +95,7 @@ void handle_client(int client_socket, Cache *cache, MockDB *db) {
             }
         } else if (strcmp(command, "delete") == 0) {
             cache_delete(cache, key);
-            db_delete(db, key);
+            db_request("delete", key, NULL);
             snprintf(response, BUFFER_SIZE, "OK");
         } else {
             snprintf(response, BUFFER_SIZE, "Invalid command");
@@ -86,7 +119,6 @@ int main(int argc, char *argv[]) {
     socklen_t addr_len = sizeof(client_addr);
 
     Cache *cache = create_cache();
-    MockDB *db = create_mockdb();
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
@@ -118,11 +150,10 @@ int main(int argc, char *argv[]) {
             perror("Accept failed");
             continue;
         }
-        handle_client(client_socket, cache, db);
+        handle_client(client_socket, cache);
     }
 
     free_cache(cache);
-    free_mockdb(db);
     close(server_socket);
     return 0;
 }

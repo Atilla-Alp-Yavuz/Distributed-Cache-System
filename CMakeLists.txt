@@ -12,4 +12,5 @@ add_executable(Distributed-Cache-System-main main.c
         conhash.h
         mockdb.h
         mockdb.c
+        db_server.c
         load_balancer.c)
