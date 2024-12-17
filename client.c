@@ -6,8 +6,8 @@
 #include <pthread.h>
 
 #define BUFFER_SIZE 1024
-#define LOAD_BALANCER_ADDRESS "127.0.0.1" // Address of the load balancer
-#define LOAD_BALANCER_PORT 9090          // Port of the load balancer
+#define LOAD_BALANCER_ADDRESS "127.0.0.1"
+#define LOAD_BALANCER_PORT 9090
 
 // Function to send a single command to the load balancer
 void send_to_load_balancer(const char *command) {
@@ -15,7 +15,6 @@ void send_to_load_balancer(const char *command) {
     struct sockaddr_in lb_addr;
     char buffer[BUFFER_SIZE] = {0};
 
-    // Create socket
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Socket creation failed");
         return;
@@ -23,37 +22,24 @@ void send_to_load_balancer(const char *command) {
 
     lb_addr.sin_family = AF_INET;
     lb_addr.sin_port = htons(LOAD_BALANCER_PORT);
+    inet_pton(AF_INET, LOAD_BALANCER_ADDRESS, &lb_addr.sin_addr);
 
-    // Convert address from text to binary form
-    if (inet_pton(AF_INET, LOAD_BALANCER_ADDRESS, &lb_addr.sin_addr) <= 0) {
-        perror("Invalid address/Address not supported");
-        close(sock);
-        return;
-    }
-
-    // Connect to the load balancer
     if (connect(sock, (struct sockaddr *)&lb_addr, sizeof(lb_addr)) < 0) {
-        perror("Connection to load balancer failed");
+        perror("Connection failed");
         close(sock);
         return;
     }
 
-    // Send command
     send(sock, command, strlen(command), 0);
-
-    // Receive response
     int bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received > 0) {
         buffer[bytes_received] = '\0';
         printf("Response to '%s': %s\n", command, buffer);
-    } else {
-        printf("No response for '%s'\n", command);
     }
-
     close(sock);
 }
 
-// Thread function for concurrent command execution
+// Thread function for executing a single command
 void *execute_command(void *arg) {
     char *command = (char *)arg;
     send_to_load_balancer(command);
@@ -61,22 +47,19 @@ void *execute_command(void *arg) {
     return NULL;
 }
 
-// Split input by '&&' and execute commands concurrently
+// Execute concurrent commands using threads
 void execute_concurrent_commands(char *input) {
-    char *token;
-    pthread_t threads[BUFFER_SIZE / 10]; // Max thread limit
+    pthread_t threads[BUFFER_SIZE / 10];
     int thread_count = 0;
 
-    // Tokenize input based on "&&"
-    token = strtok(input, "&&");
-    while (token != NULL) {
-        while (*token == ' ') token++; // Trim leading spaces
+    char *token = strtok(input, "&&");
+    while (token) {
+        while (*token == ' ') token++;  // Trim leading spaces
 
-        // Copy the command and create a thread to execute it
-        char *command = malloc(BUFFER_SIZE);
-        strncpy(command, token, BUFFER_SIZE - 1);
+        char *command = malloc(strlen(token) + 1);
+        strcpy(command, token);
 
-        if (pthread_create(&threads[thread_count], NULL, execute_command, (void *)command) != 0) {
+        if (pthread_create(&threads[thread_count], NULL, execute_command, command) != 0) {
             perror("Failed to create thread");
             free(command);
         } else {
@@ -86,10 +69,48 @@ void execute_concurrent_commands(char *input) {
         token = strtok(NULL, "&&");
     }
 
-    // Wait for all threads to complete
     for (int i = 0; i < thread_count; i++) {
         pthread_join(threads[i], NULL);
     }
+}
+
+int count_lines_in_file(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("Failed to open file");
+        return 0;
+    }
+
+    int linecount = 0;
+    char line[BUFFER_SIZE];
+    while (fgets(line, sizeof(line), file)) {
+        linecount++;
+    }
+
+    fclose(file);
+    return linecount;
+}
+
+void process_batch_file(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("Failed to open batch file");
+        return;
+    }
+
+    char line[BUFFER_SIZE];
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\n")] = '\0';  // Remove newline character
+        if (strlen(line) == 0) continue;   // Skip empty lines
+
+        if (strstr(line, "&&")) {
+            execute_concurrent_commands(line);
+        } else {
+            send_to_load_balancer(line);
+        }
+    }
+
+    fclose(file);
 }
 
 int main() {
@@ -107,6 +128,16 @@ int main() {
         // Check for concurrent commands
         if (strstr(input, "&&") != NULL) {
             execute_concurrent_commands(input);
+        } else if (strncmp(input, "batch ", 6) == 0) {
+            // Extract the filename
+            char *filename = input + 6;
+            printf("Processing batch file: %s\n", filename);
+
+            // Count lines and process the file
+            int linecount = count_lines_in_file(filename);
+            printf("Total lines in file: %d\n", linecount);
+
+            process_batch_file(filename);
         } else {
             send_to_load_balancer(input);
         }
