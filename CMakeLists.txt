@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.30)
-project(Distributed-Cache-System-main C)
+
+project(new C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(Distributed-Cache-System-main main.c
+add_executable(new main.c
+
+main
         cache.h
         cache.c
         server.c
