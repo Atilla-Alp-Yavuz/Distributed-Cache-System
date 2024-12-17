@@ -68,7 +68,7 @@ void add_node(HashRing *ring, const char *address) {
 // Find the node for a given key
 const char *get_node(HashRing *ring, const char *key) {
     if (ring->node_count == 0) {
-        fprintf(stderr, "No nodes in the ring\n");
+        //fprintf(stderr, "No nodes in the ring\n");
         return NULL;
     }
 
