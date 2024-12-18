@@ -4,7 +4,7 @@
 #include <time.h>
 #include "cache.h"
 
-#define MAX_CACHE_SIZE 3
+#define MAX_CACHE_SIZE 5
 
 Cache *create_cache() {
     Cache *cache = (Cache *)malloc(sizeof(Cache));
