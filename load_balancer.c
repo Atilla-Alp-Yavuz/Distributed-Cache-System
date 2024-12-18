@@ -106,6 +106,7 @@ void forward_to_server(const char *server_address, const char *client_request, i
     }
 
     close(server_socket);
+//    close(client_socket);
 }
 
 // Handle client connections
@@ -126,10 +127,10 @@ void *handle_client(void *client_socket_ptr) {
     pthread_mutex_unlock(&lock);
 
     if (server_address) {
-        printf("Forwarding request for key '%s' to server '%s'\n", key, server_address);
+        //printf("Forwarding request for key '%s' to server '%s'\n", key, server_address);
         forward_to_server(server_address, buffer, client_socket);
     } else {
-        send(client_socket, "Error: No available server\n", 28, 0);
+        //send(client_socket, "Error: No available server\n", 28, 0);
     }
 
     close(client_socket);

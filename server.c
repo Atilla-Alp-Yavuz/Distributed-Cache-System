@@ -10,6 +10,26 @@
 #define DB_SERVER_ADDRESS "127.0.0.1"
 #define DB_SERVER_PORT 9092
 
+void create_log_file() {
+    FILE *log_file = fopen("server.log", "a");
+    if (log_file == NULL) {
+        perror("Failed to create log file");
+        exit(EXIT_FAILURE);
+    }
+    fclose(log_file);
+}
+
+void log_cache_activity(const char *activity) {
+    FILE *log_file = fopen("server.log", "a");
+    if (log_file == NULL) {
+        perror("Failed to open log file");
+        return;
+    }
+    fprintf(log_file, "%s\n", activity);
+    fflush(log_file); // Ensure immediate flush
+    fclose(log_file);
+}
+
 void announce_to_load_balancer(const char *server_address) {
     int sock;
     struct sockaddr_in lb_addr;
@@ -61,7 +81,7 @@ char *db_request(const char *command, const char *key, const char *value) {
     return response;
 }
 
-void handle_client(int client_socket, Cache *cache) {
+void handle_client(int client_socket, Cache *cache, int server_port) {
     char buffer[BUFFER_SIZE];
 
     while (1) {
@@ -73,6 +93,7 @@ void handle_client(int client_socket, Cache *cache) {
         sscanf(buffer, "%s %s %s", command, key, value);
 
         char response[BUFFER_SIZE] = {0};
+        char log_message[BUFFER_SIZE] = {0};
 
         if (strcmp(command, "set") == 0) {
             cache_set(cache, key, value, 60);
@@ -81,18 +102,20 @@ void handle_client(int client_socket, Cache *cache) {
         } else if (strcmp(command, "get") == 0) {
             char *result = cache_get(cache, key);
             if (result) {
-                printf("Cache Hit: %s\n", key);
-                snprintf(response, BUFFER_SIZE, "%s", result);
+                snprintf(response, BUFFER_SIZE, "Cache Hit: %s", result);
+                snprintf(log_message, BUFFER_SIZE, "%d Cache Hit, key:%s value:%s", server_port, key, result);
             } else {
-                printf("Cache Miss: %s\n", key);
                 result = db_request("get", key, NULL);
                 if (strcmp(result, "null") != 0) {
                     cache_set(cache, key, result, 60);
-                    snprintf(response, BUFFER_SIZE, "%s", result);
+                    snprintf(response, BUFFER_SIZE, "Cache Miss: %s", result);
+                    snprintf(log_message, BUFFER_SIZE, "%d Cache Miss, key:%s value:%s", server_port, key, result);
                 } else {
-                    snprintf(response, BUFFER_SIZE, "null");
+                    snprintf(response, BUFFER_SIZE, "Cache Miss: Not found");
+                    snprintf(log_message, BUFFER_SIZE, "%d Cache Miss, key:%s value:(Not found)", server_port, key);
                 }
             }
+            log_cache_activity(log_message); // Write logs immediately
         } else if (strcmp(command, "delete") == 0) {
             cache_delete(cache, key);
             db_request("delete", key, NULL);
@@ -114,6 +137,8 @@ int main(int argc, char *argv[]) {
     }
 
     int port = atoi(argv[1]);
+    create_log_file(); // Ensure log file exists
+
     int server_socket, client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t addr_len = sizeof(client_addr);
@@ -150,7 +175,7 @@ int main(int argc, char *argv[]) {
             perror("Accept failed");
             continue;
         }
-        handle_client(client_socket, cache);
+        handle_client(client_socket, cache, port); // Pass server port
     }
 
     free_cache(cache);
