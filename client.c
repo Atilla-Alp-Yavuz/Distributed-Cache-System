@@ -9,6 +9,8 @@
 #define LOAD_BALANCER_ADDRESS "127.0.0.1"
 #define LOAD_BALANCER_PORT 9090
 
+pthread_mutex_t lock;
+
 // Function to send a single command to the load balancer
 void send_to_load_balancer(const char *command) {
     int sock;
@@ -42,7 +44,12 @@ void send_to_load_balancer(const char *command) {
 // Thread function for executing a single command
 void *execute_command(void *arg) {
     char *command = (char *)arg;
+
+    // Lock the mutex to ensure sequential execution
+    pthread_mutex_lock(&lock);
     send_to_load_balancer(command);
+    pthread_mutex_unlock(&lock);
+
     free(command);
     return NULL;
 }
@@ -69,6 +76,7 @@ void execute_concurrent_commands(char *input) {
         token = strtok(NULL, "&&");
     }
 
+    // Wait for all threads to finish
     for (int i = 0; i < thread_count; i++) {
         pthread_join(threads[i], NULL);
     }
@@ -106,7 +114,9 @@ void process_batch_file(const char *filename) {
         if (strstr(line, "&&")) {
             execute_concurrent_commands(line);
         } else {
+            pthread_mutex_lock(&lock);
             send_to_load_balancer(line);
+            pthread_mutex_unlock(&lock);
         }
     }
 
@@ -114,6 +124,9 @@ void process_batch_file(const char *filename) {
 }
 
 int main() {
+    // Initialize the mutex
+    pthread_mutex_init(&lock, NULL);
+
     char input[BUFFER_SIZE];
 
     while (1) {
@@ -143,5 +156,6 @@ int main() {
         }
     }
 
+    pthread_mutex_destroy(&lock);
     return 0;
 }
