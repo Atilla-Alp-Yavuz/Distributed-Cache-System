@@ -109,3 +109,22 @@ void remove_node(HashRing *ring, const char *address) {
         fprintf(stderr, "Node '%s' not found in the hash ring\n", address);
     }
 }
+
+// Get the secondary server for a given key
+const char *get_secondary_node(HashRing *ring, const char *key) {
+    if (ring->node_count < 2) {
+        return NULL; // No secondary server available
+    }
+
+    uint32_t key_hash = hash(key);
+
+    for (int i = 0; i < ring->node_count; i++) {
+        if (key_hash <= ring->nodes[i].hash) {
+            // Return the next node in the ring, wrapping around if necessary
+            return ring->nodes[(i + 1) % ring->node_count].address;
+        }
+    }
+
+    return ring->nodes[1].address; // Edge case: fallback to second node
+}
+

@@ -19,6 +19,9 @@ typedef struct HashRing {
     int node_count;         // Number of nodes currently in the ring
 } HashRing;
 
+// Declaring the global hash ring as external
+extern HashRing ring;
+
 /**
  * Hash a string using EVP for MD5.
  * @param key The key to be hashed.
@@ -42,5 +45,14 @@ void add_node(HashRing *ring, const char *address);
 const char *get_node(HashRing *ring, const char *key);
 
 void remove_node(HashRing *ring, const char *address);
+
+/**
+ * Get the secondary server for a given key.
+ * @param ring Pointer to the HashRing.
+ * @param key The key to map.
+ * @return The address of the secondary server for the key.
+ */
+const char *get_secondary_node(HashRing *ring, const char *key);
+
 
 #endif // HASH_RING_H
