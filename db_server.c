@@ -50,7 +50,6 @@ int main() {
 
     MockDB *db = create_mockdb();
 
-    // Create and bind socket
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
         perror("Failed to create socket");

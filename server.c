@@ -81,10 +81,8 @@ void replicate_to_secondary(const char *secondary_address, const char *command, 
     }
 
     if (strcmp(command, "delete") == 0) {
-        // Send only the command and key for delete
         snprintf(buffer, BUFFER_SIZE, "%s %s", command, key);
     } else {
-        // Include value for other commands
         snprintf(buffer, BUFFER_SIZE, "%s %s %s", command, key, value ? value : "");
     }
 
@@ -109,7 +107,6 @@ void handle_client(int client_socket, Cache *cache) {
         if (strcmp(command, "set") == 0) {
             cache_set(cache, key, value, 1000);
             db_request("set", key, value);
-            //
             const char *secondary_address = get_secondary_node(&ring, key);
             if (secondary_address) {
                 replicate_to_secondary(secondary_address, "set", key, value); // Replicate to secondary
@@ -133,7 +130,6 @@ void handle_client(int client_socket, Cache *cache) {
         } else if (strcmp(command, "delete") == 0) {
             cache_delete(cache, key);
             db_request("delete", key, NULL);
-            //
             const char *secondary_address = get_secondary_node(&ring, key);
             if (secondary_address) {
                 replicate_to_secondary(secondary_address, "delete", key, NULL); // Replicate deletion
