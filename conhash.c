@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/evp.h>  // For EVP interface
+#include <openssl/evp.h>
 #include "conhash.h"
 
-// Hash a string using EVP for MD5
 uint32_t hash(const char *key) {
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int digest_len;
@@ -40,7 +39,6 @@ uint32_t hash(const char *key) {
     return hash_value;
 }
 
-// Add a node to the hash ring
 void add_node(HashRing *ring, const char *address) {
     if (ring->node_count >= MAX_NODES) {
         fprintf(stderr, "Max nodes reached\n");
@@ -53,7 +51,6 @@ void add_node(HashRing *ring, const char *address) {
 
     ring->nodes[ring->node_count++] = node;
 
-    // Sort nodes by hash for consistent hashing
     for (int i = 0; i < ring->node_count - 1; i++) {
         for (int j = 0; j < ring->node_count - i - 1; j++) {
             if (ring->nodes[j].hash > ring->nodes[j + 1].hash) {
@@ -65,7 +62,6 @@ void add_node(HashRing *ring, const char *address) {
     }
 }
 
-// Find the node for a given key
 const char *get_node(HashRing *ring, const char *key) {
     if (ring->node_count == 0) {
         fprintf(stderr, "No nodes in the ring\n");
@@ -74,27 +70,22 @@ const char *get_node(HashRing *ring, const char *key) {
 
     uint32_t key_hash = hash(key);
 
-    // Find the first node with a hash greater than the key's hash
     for (int i = 0; i < ring->node_count; i++) {
         if (key_hash <= ring->nodes[i].hash) {
             return ring->nodes[i].address;
         }
     }
 
-    // Wrap around to the first node if no match is found
     return ring->nodes[0].address;
 }
 
-// Remove a node from the hash ring
 void remove_node(HashRing *ring, const char *address) {
     int found = 0;
 
-    // Find the node by address
     for (int i = 0; i < ring->node_count; i++) {
         if (strcmp(ring->nodes[i].address, address) == 0) {
             found = 1;
 
-            // Shift all subsequent nodes left
             for (int j = i; j < ring->node_count - 1; j++) {
                 ring->nodes[j] = ring->nodes[j + 1];
             }
@@ -109,3 +100,20 @@ void remove_node(HashRing *ring, const char *address) {
         fprintf(stderr, "Node '%s' not found in the hash ring\n", address);
     }
 }
+
+const char *get_secondary_node(HashRing *ring, const char *key) {
+    if (ring->node_count < 2) {
+        return NULL;
+    }
+
+    uint32_t key_hash = hash(key);
+
+    for (int i = 0; i < ring->node_count; i++) {
+        if (key_hash <= ring->nodes[i].hash) {
+            return ring->nodes[(i + 1) % ring->node_count].address;
+        }
+    }
+
+    return ring->nodes[1].address;
+}
+

@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include "cache.h"
 #include "mockdb.h"
+#include "conhash.h"
 
 #define BUFFER_SIZE 1024
 #define DB_SERVER_ADDRESS "127.0.0.1"
@@ -61,6 +62,35 @@ char *db_request(const char *command, const char *key, const char *value) {
     return response;
 }
 
+//
+void replicate_to_secondary(const char *secondary_address, const char *command, const char *key, const char *value) {
+    int sock;
+    struct sockaddr_in sec_addr;
+    char buffer[BUFFER_SIZE];
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return;
+
+    sec_addr.sin_family = AF_INET;
+    sec_addr.sin_port = htons(atoi(strchr(secondary_address, ':') + 1)); // Extract port
+    inet_pton(AF_INET, strtok(strdup(secondary_address), ":"), &sec_addr.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&sec_addr, sizeof(sec_addr)) < 0) {
+        close(sock);
+        return;
+    }
+
+    if (strcmp(command, "delete") == 0) {
+        snprintf(buffer, BUFFER_SIZE, "%s %s", command, key);
+    } else {
+        snprintf(buffer, BUFFER_SIZE, "%s %s %s", command, key, value ? value : "");
+    }
+
+    send(sock, buffer, strlen(buffer), 0);
+    close(sock);
+}
+
+
 void handle_client(int client_socket, Cache *cache) {
     char buffer[BUFFER_SIZE];
 
@@ -75,8 +105,12 @@ void handle_client(int client_socket, Cache *cache) {
         char response[BUFFER_SIZE] = {0};
 
         if (strcmp(command, "set") == 0) {
-            cache_set(cache, key, value, 60);
+            cache_set(cache, key, value, 1000);
             db_request("set", key, value);
+            const char *secondary_address = get_secondary_node(&ring, key);
+            if (secondary_address) {
+                replicate_to_secondary(secondary_address, "set", key, value); // Replicate to secondary
+            }
             snprintf(response, BUFFER_SIZE, "OK");
         } else if (strcmp(command, "get") == 0) {
             char *result = cache_get(cache, key);
@@ -87,7 +121,7 @@ void handle_client(int client_socket, Cache *cache) {
                 printf("Cache Miss: %s\n", key);
                 result = db_request("get", key, NULL);
                 if (strcmp(result, "null") != 0) {
-                    cache_set(cache, key, result, 60);
+                    cache_set(cache, key, result, 1000);
                     snprintf(response, BUFFER_SIZE, "%s", result);
                 } else {
                     snprintf(response, BUFFER_SIZE, "null");
@@ -96,6 +130,10 @@ void handle_client(int client_socket, Cache *cache) {
         } else if (strcmp(command, "delete") == 0) {
             cache_delete(cache, key);
             db_request("delete", key, NULL);
+            const char *secondary_address = get_secondary_node(&ring, key);
+            if (secondary_address) {
+                replicate_to_secondary(secondary_address, "delete", key, NULL); // Replicate deletion
+            }
             snprintf(response, BUFFER_SIZE, "OK");
         } else {
             snprintf(response, BUFFER_SIZE, "Invalid command");

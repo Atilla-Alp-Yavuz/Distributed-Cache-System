@@ -9,7 +9,8 @@
 #define LOAD_BALANCER_ADDRESS "127.0.0.1"
 #define LOAD_BALANCER_PORT 9090
 
-// Function to send a single command to the load balancer
+pthread_mutex_t lock;
+
 void send_to_load_balancer(const char *command) {
     int sock;
     struct sockaddr_in lb_addr;
@@ -39,22 +40,24 @@ void send_to_load_balancer(const char *command) {
     close(sock);
 }
 
-// Thread function for executing a single command
 void *execute_command(void *arg) {
     char *command = (char *)arg;
+
+    pthread_mutex_lock(&lock);
     send_to_load_balancer(command);
+    pthread_mutex_unlock(&lock);
+
     free(command);
     return NULL;
 }
 
-// Execute concurrent commands using threads
 void execute_concurrent_commands(char *input) {
     pthread_t threads[BUFFER_SIZE / 10];
     int thread_count = 0;
 
     char *token = strtok(input, "&&");
     while (token) {
-        while (*token == ' ') token++;  // Trim leading spaces
+        while (*token == ' ') token++;
 
         char *command = malloc(strlen(token) + 1);
         strcpy(command, token);
@@ -100,13 +103,15 @@ void process_batch_file(const char *filename) {
 
     char line[BUFFER_SIZE];
     while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\n")] = '\0';  // Remove newline character
-        if (strlen(line) == 0) continue;   // Skip empty lines
+        line[strcspn(line, "\n")] = '\0';
+        if (strlen(line) == 0) continue;
 
         if (strstr(line, "&&")) {
             execute_concurrent_commands(line);
         } else {
+            pthread_mutex_lock(&lock);
             send_to_load_balancer(line);
+            pthread_mutex_unlock(&lock);
         }
     }
 
@@ -114,26 +119,24 @@ void process_batch_file(const char *filename) {
 }
 
 int main() {
+    pthread_mutex_init(&lock, NULL);
+
     char input[BUFFER_SIZE];
 
     while (1) {
         printf("Enter command (use '&&' for concurrency, 'exit' to quit): ");
         fgets(input, BUFFER_SIZE, stdin);
-        input[strcspn(input, "\n")] = '\0'; // Remove newline character
-
+        input[strcspn(input, "\n")] = '\0';
         if (strcmp(input, "exit") == 0) {
             break;
         }
 
-        // Check for concurrent commands
         if (strstr(input, "&&") != NULL) {
             execute_concurrent_commands(input);
         } else if (strncmp(input, "batch ", 6) == 0) {
-            // Extract the filename
             char *filename = input + 6;
             printf("Processing batch file: %s\n", filename);
 
-            // Count lines and process the file
             int linecount = count_lines_in_file(filename);
             printf("Total lines in file: %d\n", linecount);
 
@@ -143,5 +146,6 @@ int main() {
         }
     }
 
+    pthread_mutex_destroy(&lock);
     return 0;
 }
